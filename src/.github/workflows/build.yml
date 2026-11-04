@@ -1,0 +1,57 @@
+name: Build macOS App
+on:
+  push:
+    branches: [ "main" ]
+jobs:
+  build:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Compile Dylib
+      run: |
+        mkdir -p bin
+        clang -dynamiclib -framework Cocoa -framework Foundation -o bin/libBozoExecuter.dylib src/BozoExecuter.m
+
+    - name: Compile Swift GUI
+      run: |
+        mkdir -p bin/BozoExecuter.app/Contents/MacOS
+        mkdir -p bin/BozoExecuter.app/Contents/Resources
+        swiftc -parse-as-library -O src/BozoUI.swift -o bin/BozoExecuter.app/Contents/MacOS/BozoExecuter
+
+    - name: Create Info.plist
+      run: |
+        cat > bin/BozoExecuter.app/Contents/Info.plist << 'PLIST'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>CFBundleExecutable</key><string>BozoExecuter</string>
+            <key>CFBundleIdentifier</key><string>com.c0oled.bozo</string>
+            <key>CFBundleName</key><string>Bozo Executer</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+        </dict>
+        </plist>
+        PLIST
+
+    - name: Build Injector from Source
+      run: |
+        git clone https://github.com/tyilo/insert_dylib /tmp/id
+        cd /tmp/id
+        clang -o $GITHUB_WORKSPACE/bin/insert_dylib insert_dylib/main.c insert_dylib/macho.c -Iinsert_dylib
+
+    - name: Zip App
+      run: |
+        cd bin
+        zip -r BozoExecuter.zip BozoExecuter.app
+        cd ..
+
+    - name: Commit Binaries
+      run: |
+        git config --global user.name "Action"
+        git config --global user.email "action@github.com"
+        git add bin/
+        git commit -m "Auto-build: compiled binaries" || echo "No changes"
+        git push
